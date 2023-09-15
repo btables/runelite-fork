@@ -307,6 +307,10 @@
 			<version>3.14.9</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>com.google.cloud</groupId>
+			<artifactId>google-cloud-translate</artifactId>
+		</dependency>
 	</dependencies>
 
 	<dependencyManagement>
@@ -315,6 +319,13 @@
 				<groupId>org.lwjgl</groupId>
 				<artifactId>lwjgl-bom</artifactId>
 				<version>3.3.2</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>com.google.cloud</groupId>
+				<artifactId>libraries-bom</artifactId>
+				<version>26.21.0</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
