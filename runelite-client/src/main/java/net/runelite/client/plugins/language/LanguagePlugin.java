@@ -28,6 +28,7 @@ package net.runelite.client.plugins.language;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 import javax.inject.Inject;
+import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Client;
 
@@ -93,8 +94,47 @@ public class LanguagePlugin extends Plugin
         for (int idx = entries.length - 1; idx >= 0; --idx)
         {
             MenuEntry entry = entries[idx];
-            String translatedOption = translateText(entry.getOption());
-            entry.setOption(translatedOption);
+            translateMenuOption(entry);
+            maybeTranslateMenuTarget(entry);
+        }
+    }
+
+
+    public void translateMenuOption(MenuEntry entry)
+    {
+        // TODO: Check option cache.
+        String translatedOption = translateText(entry.getOption());
+        entry.setOption(translatedOption);
+    }
+
+    public void maybeTranslateMenuTarget(MenuEntry entry)
+    {
+        if (!shouldTranslateTarget(entry)) {
+            System.out.println("Skipping target translation: " + entry.getTarget());
+            return;
+        }
+
+        System.out.println("Translating target: " + entry.getTarget());
+
+        // TODO: Check target cache.
+        String translatedTarget = translateText(entry.getTarget());
+        entry.setTarget(translatedTarget);
+    }
+
+    private boolean shouldTranslateTarget(MenuEntry entry) {
+        MenuAction action = entry.getType();
+        switch (action) {
+            case PLAYER_FIRST_OPTION:
+            case PLAYER_SECOND_OPTION:
+            case PLAYER_THIRD_OPTION:
+            case PLAYER_FOURTH_OPTION:
+            case PLAYER_FIFTH_OPTION:
+            case PLAYER_SIXTH_OPTION:
+            case PLAYER_SEVENTH_OPTION:
+            case PLAYER_EIGHTH_OPTION:
+                return false;
+            default:
+                return true;
         }
     }
 
@@ -107,7 +147,4 @@ public class LanguagePlugin extends Plugin
 
         return translation.getTranslatedText();
     }
-
-
-
 }
