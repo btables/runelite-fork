@@ -25,13 +25,11 @@
  */
 package net.runelite.client.plugins.language;
 
-import com.google.api.client.json.Json;
-import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonObject;
 
+import java.lang.Character;
+import java.lang.StringBuilder;
 import java.io.FileNotFoundException;
-import java.util.Set;
-import org.apache.commons.lang3.StringUtils;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -41,27 +39,30 @@ import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Client;
 
-import com.google.gson.Gson;
-import net.runelite.api.NpcID;
-import net.runelite.client.eventbus.Subscribe;
-import net.runelite.api.NullNpcID;
-import net.runelite.api.Player;
+
+
 import net.runelite.api.events.MenuOpened;
+import net.runelite.api.events.ChatMessage;
 
 import net.runelite.client.callback.Hooks;
 import net.runelite.client.game.NpcUtil;
+import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.plugins.Plugin;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.MessageNode;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.eventbus.Subscribe;
 
+import com.google.gson.Gson;
 import com.google.cloud.translate.Translation;
 import com.google.cloud.translate.Translate;
-import com.google.cloud.translate.Translation;
 import com.google.cloud.translate.testing.RemoteTranslateHelper;
 
 enum TranslationType {
     TARGET,
     OPTION,
     DIALOG,
+    CHAT_MESSAGE,
 }
 
 @PluginDescriptor(
@@ -71,9 +72,11 @@ enum TranslationType {
         enabledByDefault = true
 )
 // TODO: Tooltip
+// TODO: Chat box minus player messages
 // TODO: Quest list
-// TODO: Bottom tabs (all, public, etc)
-// TODO: Capitalize first letter.
+// TODO: Static widgets, Bottom tabs (all, public, etc), "Friends list",
+// TODO: Subscribe to client shutdown.
+// TODO: Somehow hold shift to translate back?
 public class LanguagePlugin extends Plugin
 {
     private static Translate translate;
@@ -92,13 +95,15 @@ public class LanguagePlugin extends Plugin
     @Inject
     private NpcUtil npcUtil;
 
+    @Inject
+    private ChatMessageManager chatMessageManager;
+
 
     @Override
     protected void startUp()
     {
         RemoteTranslateHelper helper = RemoteTranslateHelper.create();
         translate = helper.getOptions().getService();
-
         populateCache();
     }
 
@@ -167,6 +172,41 @@ public class LanguagePlugin extends Plugin
         }
     }
 
+    private boolean shouldTranslateChatMessage(ChatMessageType messageType) {
+        switch (messageType) {
+            // Don't translate players
+            case GAMEMESSAGE:
+            case TRADE_SENT:
+            case TRADE:
+            case NPC_EXAMINE:
+            case WELCOME:
+            case TRADEREQ:
+            case ITEM_EXAMINE:
+            case OBJECT_EXAMINE:
+            case FRIENDNOTIFICATION:
+            case IGNORENOTIFICATION:
+            case CLAN_CHAT:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event)
+    {
+        if (!shouldTranslateChatMessage(event.getType())) {
+            return;
+        }
+
+        String translatedText = translateText(event.getMessage(), "", TranslationType.CHAT_MESSAGE);
+
+        final MessageNode messageNode = event.getMessageNode();
+        messageNode.setRuneLiteFormatMessage(translatedText);
+        chatMessageManager.update(messageNode);
+        client.refreshChat();
+    }
+
     private void writeCache() {
         try {
             FileWriter fw = new FileWriter(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\translations.json", false);
@@ -180,32 +220,45 @@ public class LanguagePlugin extends Plugin
 
     // TODO: Wrap in promise.
     private String translateText (String sourceText, String prefix, TranslationType type) {
+        if (sourceText.length() == 0) {
+            return "";
+        }
 
         JsonObject cache = this.translationsCache.getAsJsonObject(type.name());
 
-
         if (cache.has(sourceText)) {
-            System.out.println("Cache already contained: " + sourceText);
+            System.out.println("English: " + sourceText);
+            System.out.println("Spanish: " + cache.get(sourceText).getAsString());
             return cache.get(sourceText).getAsString();
         }
 
-        int closingColorIndex = sourceText.indexOf(">");
-        boolean isColoredText = closingColorIndex != -1;
-
-        if (isColoredText) {
-
-        }
-
-
+        System.out.println("translating " + prefix + sourceText);
         Translation translation =
                 translate.translate(
-                        sourceText,
+                        prefix + sourceText,
                         Translate.TranslateOption.sourceLanguage(sourceLanguage),
                         Translate.TranslateOption.targetLanguage(destinationLanguage));
 
-        String translatedText = StringUtils.capitalize(translation.getTranslatedText());
-        cache.addProperty(sourceText, translatedText);
 
-        return translatedText;
+        String translatedText = translation.getTranslatedText();
+
+        System.out.println("got back " + translatedText);
+
+        // Capitalize the first non-color character
+        int charIndexToCapitalize = translation.getTranslatedText().indexOf('>') + 1;
+        System.out.println("Trying to message " + translatedText);
+        System.out.println("Trying to capitalize char at " + charIndexToCapitalize);
+        char charInUpperCase = Character.toUpperCase(translatedText.charAt(charIndexToCapitalize));
+        StringBuilder capitalizedTextBuilder = new StringBuilder(translatedText);
+        capitalizedTextBuilder.setCharAt(charIndexToCapitalize, charInUpperCase);
+        String finalText =  capitalizedTextBuilder.toString();
+
+        // Add to the corresponding cache so we no longer translate this string
+        cache.addProperty(sourceText, finalText);
+
+        System.out.println("English: " + sourceText);
+        System.out.println("Spanish: " +finalText);
+
+        return finalText;
     }
 }
