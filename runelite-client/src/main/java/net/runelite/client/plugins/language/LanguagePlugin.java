@@ -25,6 +25,7 @@
  */
 package net.runelite.client.plugins.language;
 
+import org.apache.commons.lang3.StringUtils;
 import com.google.gson.JsonObject;
 
 import java.lang.Character;
@@ -34,6 +35,8 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.File;
+import java.util.HashSet;
+import java.util.Set;
 import javax.inject.Inject;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
@@ -71,7 +74,7 @@ enum TranslationType {
         tags = {"languages"},
         enabledByDefault = true
 )
-// TODO: Tooltip
+// TODO: Tooltip (top left and runelite)
 // TODO: Chat box minus player messages
 // TODO: Quest list
 // TODO: Static widgets, Bottom tabs (all, public, etc), "Friends list",
@@ -117,11 +120,24 @@ public class LanguagePlugin extends Plugin
     public void onMenuOpened(MenuOpened event)
     {
         MenuEntry[] entries = event.getMenuEntries();
+        // First find all the player targets in the current menu.
+        Set<String> playerSet = new HashSet<String>();
+
+        for (int idx = entries.length - 1; idx >= 0; --idx)
+        {
+            MenuEntry entry = entries[idx];
+            if (!shouldTranslateTarget(entry)) {
+                playerSet.add(entry.getTarget());
+            }
+        }
         for (int idx = entries.length - 1; idx >= 0; --idx)
         {
             MenuEntry entry = entries[idx];
             translateMenuOption(entry);
-            maybeTranslateMenuTarget(entry);
+            if (!playerSet.contains(entry.getTarget())) {
+                System.out.println("Translating target because it was not a player" + entry.getTarget() + "it had option " + entry.getOption());
+                translateMenuTarget(entry);
+            }
         }
     }
 
@@ -132,18 +148,15 @@ public class LanguagePlugin extends Plugin
         entry.setOption(translatedOption);
     }
 
-    private void maybeTranslateMenuTarget(MenuEntry entry)
+    private void translateMenuTarget(MenuEntry entry)
     {
-        if (!shouldTranslateTarget(entry)) {
-            return;
-        }
-
         String translatedTarget = translateText(entry.getTarget(), "a ", TranslationType.TARGET);
         entry.setTarget(translatedTarget);
     }
 
     private boolean shouldTranslateTarget(MenuEntry entry) {
         MenuAction action = entry.getType();
+        System.out.println("entry action is " + action);
         switch (action) {
             // Don't translate players
             case PLAYER_FIRST_OPTION:
@@ -174,7 +187,6 @@ public class LanguagePlugin extends Plugin
 
     private boolean shouldTranslateChatMessage(ChatMessageType messageType) {
         switch (messageType) {
-            // Don't translate players
             case GAMEMESSAGE:
             case TRADE_SENT:
             case TRADE:
@@ -186,6 +198,10 @@ public class LanguagePlugin extends Plugin
             case FRIENDNOTIFICATION:
             case IGNORENOTIFICATION:
             case CLAN_CHAT:
+            case BROADCAST:
+            case CLAN_MESSAGE:
+            case LOGINLOGOUTNOTIFICATION:
+            case DIALOG:
                 return true;
             default:
                 return false;
@@ -232,33 +248,45 @@ public class LanguagePlugin extends Plugin
             return cache.get(sourceText).getAsString();
         }
 
-        System.out.println("translating " + prefix + sourceText);
+        int colorIndex = sourceText.indexOf(">");
+        String textToTranslate = sourceText;
+        String color = "";
+        if (colorIndex != -1) {
+            color = sourceText.substring(0, colorIndex+1);
+            textToTranslate = textToTranslate.substring(colorIndex+1);
+        }
+
+        System.out.println("translating " + prefix + textToTranslate);
         Translation translation =
                 translate.translate(
-                        prefix + sourceText,
+                        prefix + textToTranslate,
                         Translate.TranslateOption.sourceLanguage(sourceLanguage),
                         Translate.TranslateOption.targetLanguage(destinationLanguage));
+
+        String formattedText = color + StringUtils.capitalize(translation.getTranslatedText());
+
 
 
         String translatedText = translation.getTranslatedText();
 
-        System.out.println("got back " + translatedText);
+        System.out.println("got back " + formattedText);
 
-        // Capitalize the first non-color character
-        int charIndexToCapitalize = translation.getTranslatedText().indexOf('>') + 1;
-        System.out.println("Trying to message " + translatedText);
-        System.out.println("Trying to capitalize char at " + charIndexToCapitalize);
-        char charInUpperCase = Character.toUpperCase(translatedText.charAt(charIndexToCapitalize));
-        StringBuilder capitalizedTextBuilder = new StringBuilder(translatedText);
-        capitalizedTextBuilder.setCharAt(charIndexToCapitalize, charInUpperCase);
-        String finalText =  capitalizedTextBuilder.toString();
 
+//        // Capitalize the first non-color character
+//        int charIndexToCapitalize = translation.getTranslatedText().indexOf('>') + 1;
+//        System.out.println("Trying to message " + translatedText);
+//        System.out.println("Trying to capitalize char at " + charIndexToCapitalize);
+//        char charInUpperCase = Character.toUpperCase(translatedText.charAt(charIndexToCapitalize));
+//        StringBuilder capitalizedTextBuilder = new StringBuilder(translatedText);
+//        capitalizedTextBuilder.setCharAt(charIndexToCapitalize, charInUpperCase);
+//        String finalText =  capitalizedTextBuilder.toString();
+//
         // Add to the corresponding cache so we no longer translate this string
-        cache.addProperty(sourceText, finalText);
+        cache.addProperty(sourceText, formattedText);
 
         System.out.println("English: " + sourceText);
-        System.out.println("Spanish: " +finalText);
+        System.out.println("Spanish: " +formattedText);
 
-        return finalText;
+        return formattedText;
     }
 }
