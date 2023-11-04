@@ -25,6 +25,7 @@
  */
 package net.runelite.client.plugins.language;
 
+import com.google.api.client.json.Json;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonObject;
 
@@ -57,18 +58,22 @@ import com.google.cloud.translate.Translate;
 import com.google.cloud.translate.Translation;
 import com.google.cloud.translate.testing.RemoteTranslateHelper;
 
+enum TranslationType {
+    TARGET,
+    OPTION,
+    DIALOG,
+}
+
 @PluginDescriptor(
         name = "Language",
         description = "Translates in game text",
         tags = {"languages"},
         enabledByDefault = true
 )
-
 // TODO: Tooltip
 // TODO: Quest list
 // TODO: Bottom tabs (all, public, etc)
 // TODO: Capitalize first letter.
-// TODO: Move all maps into one JSON.
 public class LanguagePlugin extends Plugin
 {
     private static Translate translate;
@@ -76,10 +81,7 @@ public class LanguagePlugin extends Plugin
     private final String sourceLanguage = "en";
     private final String destinationLanguage = "es";
     private final String filePath = new File("").getAbsolutePath();
-
-    private JsonObject dialogCache;
-    private JsonObject optionCache;
-    private JsonObject targetCache;
+    private JsonObject translationsCache;
 
     @Inject
     private Client client;
@@ -121,7 +123,7 @@ public class LanguagePlugin extends Plugin
 
     private void translateMenuOption(MenuEntry entry)
     {
-        String translatedOption = translateText(entry.getOption(), "to " optionCache);
+        String translatedOption = translateText(entry.getOption(), "to ", TranslationType.OPTION);
         entry.setOption(translatedOption);
     }
 
@@ -131,13 +133,14 @@ public class LanguagePlugin extends Plugin
             return;
         }
 
-        String translatedTarget = translateText(entry.getTarget(), "a ", targetCache);
+        String translatedTarget = translateText(entry.getTarget(), "a ", TranslationType.TARGET);
         entry.setTarget(translatedTarget);
     }
 
     private boolean shouldTranslateTarget(MenuEntry entry) {
         MenuAction action = entry.getType();
         switch (action) {
+            // Don't translate players
             case PLAYER_FIRST_OPTION:
             case PLAYER_SECOND_OPTION:
             case PLAYER_THIRD_OPTION:
@@ -155,14 +158,9 @@ public class LanguagePlugin extends Plugin
     private void populateCache() {
         Gson gson = new Gson();
         try {
-            BufferedReader bufferedReader = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\options.json"));
-            optionCache = gson.fromJson(bufferedReader, JsonObject.class);
-
-            bufferedReader = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\targets.json"));
-            targetCache = gson.fromJson(bufferedReader, JsonObject.class);
-
-            bufferedReader = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\dialogs.json"));
-            dialogCache = gson.fromJson(bufferedReader, JsonObject.class);
+            BufferedReader bufferedReader  = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\translations.json"));
+            translationsCache = gson.fromJson(bufferedReader, JsonObject.class);
+            System.out.println("Translation cache loaded with " + translationsCache.toString());
         }
         catch (FileNotFoundException ex) {
             System.out.println("Unable to open cache files. " + ex.getMessage());
@@ -171,9 +169,9 @@ public class LanguagePlugin extends Plugin
 
     private void writeCache() {
         try {
-            FileWriter fw = new FileWriter(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\languages\\new-targets.txt", false);
-            fw.write(targetCache.toString());
-
+            FileWriter fw = new FileWriter(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\translations.json", false);
+            fw.write(translationsCache.toString());
+            fw.flush();
         }
         catch (Exception e) {
             System.out.println("Unable to write to file: " + e.getMessage());
@@ -181,7 +179,10 @@ public class LanguagePlugin extends Plugin
     }
 
     // TODO: Wrap in promise.
-    private String translateText (String sourceText, String prefix, JsonObject cache) {
+    private String translateText (String sourceText, String prefix, TranslationType type) {
+
+        JsonObject cache = this.translationsCache.getAsJsonObject(type.name());
+
 
         if (cache.has(sourceText)) {
             System.out.println("Cache already contained: " + sourceText);
