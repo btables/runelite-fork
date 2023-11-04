@@ -26,12 +26,21 @@
 package net.runelite.client.plugins.language;
 
 import com.google.common.collect.ImmutableSet;
+import com.google.gson.JsonObject;
+
+import java.io.FileNotFoundException;
 import java.util.Set;
+import org.apache.commons.lang3.StringUtils;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.File;
 import javax.inject.Inject;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.Client;
 
+import com.google.gson.Gson;
 import net.runelite.api.NpcID;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.api.NullNpcID;
@@ -54,13 +63,23 @@ import com.google.cloud.translate.testing.RemoteTranslateHelper;
         tags = {"languages"},
         enabledByDefault = true
 )
+
+// TODO: Tooltip
+// TODO: Quest list
+// TODO: Bottom tabs (all, public, etc)
+// TODO: Capitalize first letter.
+// TODO: Move all maps into one JSON.
 public class LanguagePlugin extends Plugin
 {
-
     private static Translate translate;
 
     private final String sourceLanguage = "en";
     private final String destinationLanguage = "es";
+    private final String filePath = new File("").getAbsolutePath();
+
+    private JsonObject dialogCache;
+    private JsonObject optionCache;
+    private JsonObject targetCache;
 
     @Inject
     private Client client;
@@ -72,19 +91,19 @@ public class LanguagePlugin extends Plugin
     private NpcUtil npcUtil;
 
 
-
-
     @Override
     protected void startUp()
     {
         RemoteTranslateHelper helper = RemoteTranslateHelper.create();
         translate = helper.getOptions().getService();
+
+        populateCache();
     }
 
     @Override
     protected void shutDown()
     {
-        // TODO: Write Cache.
+        writeCache();
     }
 
     @Subscribe
@@ -100,24 +119,19 @@ public class LanguagePlugin extends Plugin
     }
 
 
-    public void translateMenuOption(MenuEntry entry)
+    private void translateMenuOption(MenuEntry entry)
     {
-        // TODO: Check option cache.
-        String translatedOption = translateText(entry.getOption());
+        String translatedOption = translateText(entry.getOption(), "to " optionCache);
         entry.setOption(translatedOption);
     }
 
-    public void maybeTranslateMenuTarget(MenuEntry entry)
+    private void maybeTranslateMenuTarget(MenuEntry entry)
     {
         if (!shouldTranslateTarget(entry)) {
-            System.out.println("Skipping target translation: " + entry.getTarget());
             return;
         }
 
-        System.out.println("Translating target: " + entry.getTarget());
-
-        // TODO: Check target cache.
-        String translatedTarget = translateText(entry.getTarget());
+        String translatedTarget = translateText(entry.getTarget(), "a ", targetCache);
         entry.setTarget(translatedTarget);
     }
 
@@ -138,13 +152,59 @@ public class LanguagePlugin extends Plugin
         }
     }
 
-    private String translateText (String sourceText) {
+    private void populateCache() {
+        Gson gson = new Gson();
+        try {
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\options.json"));
+            optionCache = gson.fromJson(bufferedReader, JsonObject.class);
+
+            bufferedReader = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\targets.json"));
+            targetCache = gson.fromJson(bufferedReader, JsonObject.class);
+
+            bufferedReader = new BufferedReader(new FileReader(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\language\\dialogs.json"));
+            dialogCache = gson.fromJson(bufferedReader, JsonObject.class);
+        }
+        catch (FileNotFoundException ex) {
+            System.out.println("Unable to open cache files. " + ex.getMessage());
+        }
+    }
+
+    private void writeCache() {
+        try {
+            FileWriter fw = new FileWriter(filePath + "\\runelite-client\\src\\main\\java\\net\\runelite\\client\\plugins\\languages\\new-targets.txt", false);
+            fw.write(targetCache.toString());
+
+        }
+        catch (Exception e) {
+            System.out.println("Unable to write to file: " + e.getMessage());
+        }
+    }
+
+    // TODO: Wrap in promise.
+    private String translateText (String sourceText, String prefix, JsonObject cache) {
+
+        if (cache.has(sourceText)) {
+            System.out.println("Cache already contained: " + sourceText);
+            return cache.get(sourceText).getAsString();
+        }
+
+        int closingColorIndex = sourceText.indexOf(">");
+        boolean isColoredText = closingColorIndex != -1;
+
+        if (isColoredText) {
+
+        }
+
+
         Translation translation =
                 translate.translate(
                         sourceText,
                         Translate.TranslateOption.sourceLanguage(sourceLanguage),
                         Translate.TranslateOption.targetLanguage(destinationLanguage));
 
-        return translation.getTranslatedText();
+        String translatedText = StringUtils.capitalize(translation.getTranslatedText());
+        cache.addProperty(sourceText, translatedText);
+
+        return translatedText;
     }
 }
