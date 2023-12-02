@@ -37,6 +37,7 @@ import java.io.FileWriter;
 import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import javax.inject.Inject;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
@@ -74,6 +75,7 @@ enum TranslationType {
         tags = {"languages"},
         enabledByDefault = true
 )
+// TODO: First check cache, then do future
 // TODO: Tooltip (top left and runelite)
 // TODO: Chat box minus player messages
 // TODO: Quest list
@@ -139,19 +141,33 @@ public class LanguagePlugin extends Plugin
                 translateMenuTarget(entry);
             }
         }
+
     }
 
 
     private void translateMenuOption(MenuEntry entry)
     {
-        String translatedOption = translateText(entry.getOption(), "to ", TranslationType.OPTION);
-        entry.setOption(translatedOption);
+        CompletableFuture<String> future =  CompletableFuture.supplyAsync(() -> {
+            return  translateText(entry.getOption(), "to ", TranslationType.OPTION);
+        });
+        future.thenAccept((text -> {
+            entry.setOption(text);
+        }));
+//
+//        String translatedOption = translateText(entry.getOption(), "to ", TranslationType.OPTION);
+//        entry.setOption(translatedOption);
     }
 
     private void translateMenuTarget(MenuEntry entry)
     {
-        String translatedTarget = translateText(entry.getTarget(), "a ", TranslationType.TARGET);
-        entry.setTarget(translatedTarget);
+        CompletableFuture<String> future =  CompletableFuture.supplyAsync(() -> {
+           return translateText(entry.getTarget(), "a ", TranslationType.TARGET);
+        });
+        future.thenAccept((text -> {
+            entry.setTarget(text);
+        }));
+//        String translatedTarget = translateText(entry.getTarget(), "a ", TranslationType.TARGET);
+//        entry.setTarget(translatedTarget);
     }
 
     private boolean shouldTranslateTarget(MenuEntry entry) {
@@ -256,7 +272,6 @@ public class LanguagePlugin extends Plugin
             textToTranslate = textToTranslate.substring(colorIndex+1);
         }
 
-        System.out.println("translating " + prefix + textToTranslate);
         Translation translation =
                 translate.translate(
                         prefix + textToTranslate,
@@ -265,22 +280,6 @@ public class LanguagePlugin extends Plugin
 
         String formattedText = color + StringUtils.capitalize(translation.getTranslatedText());
 
-
-
-        String translatedText = translation.getTranslatedText();
-
-        System.out.println("got back " + formattedText);
-
-
-//        // Capitalize the first non-color character
-//        int charIndexToCapitalize = translation.getTranslatedText().indexOf('>') + 1;
-//        System.out.println("Trying to message " + translatedText);
-//        System.out.println("Trying to capitalize char at " + charIndexToCapitalize);
-//        char charInUpperCase = Character.toUpperCase(translatedText.charAt(charIndexToCapitalize));
-//        StringBuilder capitalizedTextBuilder = new StringBuilder(translatedText);
-//        capitalizedTextBuilder.setCharAt(charIndexToCapitalize, charInUpperCase);
-//        String finalText =  capitalizedTextBuilder.toString();
-//
         // Add to the corresponding cache so we no longer translate this string
         cache.addProperty(sourceText, formattedText);
 
